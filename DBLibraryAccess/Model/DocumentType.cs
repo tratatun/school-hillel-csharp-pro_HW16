@@ -9,5 +9,5 @@ public partial class DocumentType
 
     public string? Type { get; set; }
 
-    public virtual ICollection<Reader> Readers { get; set; } = new List<Reader>();
+    public virtual ICollection<User> Users { get; set; } = new List<User>();
 }
