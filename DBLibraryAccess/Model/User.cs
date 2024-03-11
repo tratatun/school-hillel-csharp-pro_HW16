@@ -31,4 +31,9 @@ public partial class User
 
     [NotMapped]
     public virtual ICollection<Book?> Books => UserBooks.Select(x => x.Book).ToList();
+
+    public override string ToString()
+    {
+        return $"{FirstName} {LastName}";
+    }
 }

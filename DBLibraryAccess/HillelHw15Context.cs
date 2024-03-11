@@ -15,6 +15,7 @@ public interface ILibraryModelContext
     DbSet<User> Users { get; set; }
     DbSet<UserRole> UserRoles { get; set; }
     DbSet<UserBook> UserBooks { get; set; }
+    int SaveChanges();
 }
 
 public partial class HillelHw15Context : DbContext, ILibraryModelContext
@@ -103,7 +104,9 @@ public partial class HillelHw15Context : DbContext, ILibraryModelContext
                 new AuthorBook { AuthorId = 5, BookId = 5 },
                 new AuthorBook { AuthorId = 3, BookId = 6 },
                 new AuthorBook { AuthorId = 5, BookId = 7 },
-                new AuthorBook { AuthorId = 5, BookId = 8 }
+                new AuthorBook { AuthorId = 5, BookId = 8 },
+                new AuthorBook { AuthorId = 4, BookId = 9 },
+                new AuthorBook { AuthorId = 3, BookId = 10 }
                 );
         });
 

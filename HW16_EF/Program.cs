@@ -11,7 +11,7 @@ namespace HW16_EF
             using var context = new HillelHw15Context();
 
             var libraryController = new LibraryController(context);
-            libraryController.ShowLoginMenu();
+            libraryController.Start();
         }
     }
 }

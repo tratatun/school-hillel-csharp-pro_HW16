@@ -11,187 +11,366 @@ namespace HW16_EF
 {
     internal class LibraryController
     {
-        private AuthSystem AuthSystem { get; set; }
+        private AuthController AuthSystem { get; set; }
 
         private ILibraryModelContext LibraryModelContext { get; set; }
 
         public LibraryController(ILibraryModelContext libraryModelContext)
         {
-            AuthSystem = new AuthSystem(libraryModelContext);
+            AuthSystem = new AuthController(libraryModelContext);
             LibraryModelContext = libraryModelContext;
         }
 
-        public void ShowLoginMenu()
+        public void Start()
         {
-            Console.WriteLine("Welcome to the Library!");
-            Console.WriteLine("Please enter your username and password to log in.");
-            Console.Write("Username: ");
-            string username = Console.ReadLine();
-            Console.Write("Password: ");
-            string password = Console.ReadLine();
+            AuthSystem.Logout();
+            MenuStorage.ShowLoginMenu(LoginAction);
+        }
+        
+        private void LoginAction(string username, string password)
+        {
             if (username != null && password != null)
             {
-                if(AuthSystem.Login(username, password))
+                if (AuthSystem.Login(username, password))
                 {
-                    ShowMainMenu();
-                }
+                    MainMenuAction();
+    }
                 else
                 {
-                    ShowLoginMenu();
+                    MenuStorage.ShowLoginMenu(LoginAction, true);
                 }
             }
         }
-        private void ShowMainMenu()
+        private void MainMenuAction()
         {
-            Console.WriteLine("Welcome to the Library!");
-            Console.WriteLine("Please select an option:");
-            Console.WriteLine("1. View all books");
-            Console.WriteLine("2. View my books");
-            Console.WriteLine("3. View my history");
-            Console.WriteLine("4. Find book by title");
-            Console.WriteLine("5. Find book by author");
+            if (!AuthSystem.IsLoggedIn || AuthSystem.GetCurrentUser() == null)
+            {
+                MenuStorage.ShowLoginMenu(LoginAction);
+                return;
+            }
 
-            Console.WriteLine("0. Log out");
-            Console.Write("Option: ");
-            string option = Console.ReadLine();
+            if (AuthSystem.GetCurrentUser().UserRole.Role == "Librarian")
+            {
+                LibrarianMenuAction();
+                return;
+            }
             
+            ReaderMenuAction();
+        }
+
+        private void ReaderMenuAction()
+        {
+            /*
+                1. View all books available in library
+                2. View my books
+                3. View my history
+                4. Find books by title
+                5. Find books by author
+                6. Take available book
+                7. Return book
+                0. Log out
+             *             */
+            MenuStorage.ShowReaderMenuOptions();
+
+            string option = Console.ReadLine();
+
             switch (option)
             {
                 case "1":
-                    ShowAllBooks();
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    MenuStorage.ShowAllAvailableBooks(LibraryModelContext.Books.Where(b => b.IsInLibrary ?? false).ToList());
                     break;
                 case "2":
-                    ShowUserBooks();
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    MenuStorage.ShowUserBooks(AuthSystem.GetCurrentUser());
                     break;
                 case "3":
-                    ShowUserHistory();
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    MenuStorage.ShowUserHistory(AuthSystem.GetCurrentUser());
                     break;
                 case "4":
-                    FindBookByTitle();
+                    MenuStorage.ShowFindBookByTitleMenu(FindBookByTitlePartAction);
                     break;
                 case "5":
-                    FindBookByAuthor();
+                    MenuStorage.ShowFindBookByAuthorMenu(FindBookByAuthorAction);
+                    break;
+                case "6":
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    MenuStorage.ShowAllAvailableBooks(LibraryModelContext.Books.Where(b => b.IsInLibrary ?? false).ToList());
+
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    MenuStorage.TakeAvailableBook(AuthSystem.GetCurrentUser(), FindBookByTitlePartAction, SaveBookToUserAction);
+
+                    break;
+                case "7":
+                    User? user = AuthSystem.GetCurrentUser();
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    MenuStorage.ShowUserBooks(user);
+                    
+                    MenuStorage.ReturnBook(user, SaveBookToUserAction, FindBookByTitlePartAction);
                     break;
                 case "0":
                     AuthSystem.Logout();
-                    ShowLoginMenu();
                     break;
                 default:
-                    ShowMainMenu();
                     break;
             }
+            MainMenuAction();
         }
 
-        private void ShowUserBooks()
+        private Book FindBookByTitlePartAction(string title)
         {
-            User? currentUser = AuthSystem.GetCurrentUser();
-            LibraryModelContext.Users.Include(u => u.UserBooks).Load();
-            LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
-            LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
             LibraryModelContext.Books.Include(b => b.UserBooks).Load();
-            if (currentUser != null)
-            {
-                Console.WriteLine("My books:");
-                var userBooks = new List<UserBook>();
-                foreach (var userBook in currentUser.UserBooks.OrderByDescending(ub=>ub.TookDate))
-                {
-                    if (userBooks.Any(ub => ub.BookId == userBook.BookId) || (userBook.Book.IsInLibrary ?? false))
-                    {
-                        continue;
-                    }
-
-                    userBooks.Add(userBook);
-                }
-                foreach (var userBook in userBooks.OrderBy(ub => ub.ReturnDate))
-                {
-                    if (userBook.ReturnDate<DateTime.Now)
-                    {
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine(userBook);
-                        Console.ForegroundColor = ConsoleColor.White;
-                    }
-                    else
-                    {
-                        Console.WriteLine(userBook);
-                    }
-                }
-                ShowMainMenu();
-            }
-            else
-            {
-                ShowLoginMenu();
-            }
+            return LibraryModelContext.Books.FirstOrDefault(b => b.Title.Contains(title) && (b.IsInLibrary ?? false));
         }
 
-        private void ShowUserHistory()
+        private ICollection<Book?> FindBookByAuthorAction(string author)
         {
-            User? currentUser = AuthSystem.GetCurrentUser();
-            LibraryModelContext.Users.Include(u => u.UserBooks).Load();
-            LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
             LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
-            LibraryModelContext.Books.Include(b => b.UserBooks).Load();
-            if (currentUser != null)
-            {
-                Console.WriteLine("My history:");
-                foreach (var userBook in currentUser.UserBooks.OrderByDescending(ub => ub.TookDate))
-                {
-                    Console.WriteLine(userBook);
-                }
-                ShowMainMenu();
-            }
-            else
-            {
-                ShowLoginMenu();
-            }
-        }
-
-        private void FindBookByTitle()
-        {
-            Console.Write("Enter the title of the book: ");
-            string title = Console.ReadLine();
-            LibraryModelContext.Books.Include(b => b.UserBooks).Load();
-            var book = LibraryModelContext.Books.FirstOrDefault(b => b.Title.Contains(title));
-            if (book != null)
-            {
-                Console.WriteLine($"Book found: {book.Title}");
-            }
-            else
-            {
-                Console.WriteLine("Book not found.");
-            }
-            ShowMainMenu();
-        }
-
-        private void FindBookByAuthor()
-        {
-            Console.Write("Enter the name of the author: ");
-            string author = Console.ReadLine();
-            LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+            LibraryModelContext.AuthorBooks.Include(b => b.Author).Load();
             LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
-            var books = LibraryModelContext.Books.Where(b => b.Authors.Any(a => a.IsComplyWith(author))).ToList();
-            if (books.Any())
-            {
-                Console.WriteLine($"Books found by {author}:");
-                foreach (var book in books)
-                {
-                    Console.WriteLine(book.Title);
-                }
-            }
-            else
-            {
-                Console.WriteLine($"No books found by {author}.");
-            }
-            ShowMainMenu();
+            var books = LibraryModelContext.Books.ToList().Where(b => b.Authors.Any(a => a.IsComplyWith(author))).ToList();
+            return books;
         }
 
-        private void ShowAllBooks()
+        private bool SaveBookToUserAction(UserBook userBook, Book book, bool isInLibrary)
         {
-            Console.WriteLine("All books:");
-            foreach (var book in LibraryModelContext.Books.Where(b=> b.IsInLibrary ?? false))
+            LibraryModelContext.UserBooks.Add(userBook);
+            book.IsInLibrary = isInLibrary;
+            var result = LibraryModelContext.SaveChanges();
+
+            return result == 2;
+        }
+
+        private void LibrarianMenuAction()
+        {
+            /*
+                1. View all books available in library
+                2. View all authors
+                3. View all users
+                4. View user history
+                5. View user books
+                6. Add new book
+                7. Add new author
+                8. Add new user
+                9. Update book
+                10. Update author
+                11. Update user
+                12. Delete book
+                13. Delete author
+                14. Delete user
+                0. Log out
+            */
+            MenuStorage.ShowLibrarianMenuOptions();
+
+            string option = Console.ReadLine();
+            switch (option)
             {
-                Console.WriteLine(book.Title);
+                case "1":
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    var books = LibraryModelContext.Books.Where(b => b.IsInLibrary ?? false).ToList();
+                    MenuStorage.ShowAllAvailableBooks(books);
+                    break;
+                case "2":
+                    LibraryModelContext.Authors.Include(a => a.AuthorBooks).Load();
+                    var authors = LibraryModelContext.Authors.ToList();
+                    MenuStorage.ShowAllAuthors(authors);
+                    break;
+                case "3":
+                    MenuStorage.ShowAllUsers(LibraryModelContext.Users.ToList());
+                    break;
+                case "4":
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    LibraryModelContext.Authors.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    foreach (var user in LibraryModelContext.Users.ToList())
+                    {
+                        MenuStorage.ShowUserHistory(user);
+                    }
+                    break;
+                case "5":
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    LibraryModelContext.Books.Include(b => b.UserBooks).Load();
+                    List<User> users = LibraryModelContext.Users.ToList();
+                    foreach (var user in users)
+                    {
+                        MenuStorage.ShowUserBooks(user); //////
+                    }
+                    break;
+                case "6":
+                    MenuStorage.ShowAddNewBookMenu(SaveNewBookAction);
+                    break;
+                case "7":
+                    MenuStorage.ShowAddNewAuthorMenu(SaveNewAuthorAction);
+                    break;
+                case "8":
+                    MenuStorage.ShowAddNewUserMenu(SaveNewUserAction);
+                    break;
+                case "9":
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    MenuStorage.ShowUpdateBookMenu(FindBookByTitlePartAction, UpdateBookFunc);
+                    break;
+                case "10":
+                    LibraryModelContext.Authors.Include(a => a.AuthorBooks).Load();
+                    MenuStorage.ShowUpdateAuthorMenu(FindAuthorByNamePartAction, UpdateAuthorAction);
+                    break;
+                case "11":
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    MenuStorage.ShowUpdateUserMenu(FindUserByLoginNameAction, UpdateUserAction);
+                    break;
+                case "12":
+                    LibraryModelContext.Books.Include(b => b.AuthorBooks).Load();
+                    MenuStorage.ShowDeleteBookMenu(FindBookByTitlePartAction, DeleteBookAction);
+                    break;
+                case "13":
+                    LibraryModelContext.Authors.Include(a => a.AuthorBooks).Load();
+                    MenuStorage.ShowDeleteAuthorMenu(FindAuthorByNamePartAction, DeleteAuthorAction);
+                    break;
+                case "14":
+                    LibraryModelContext.Users.Include(u => u.UserBooks).Load();
+                    MenuStorage.ShowDeleteUserMenu(FindUserByLoginNameAction, DeleteUserAction);
+                    break;
+                case "0":
+                    AuthSystem.Logout();
+                    break;
+                default:
+                    break;
             }
-            ShowMainMenu();
+            MainMenuAction();
+        }
+
+        private int SaveNewBookAction(string title, int publicationYear, string country, string city, string authorName)
+        {
+            var author = LibraryModelContext.Authors.FirstOrDefault(a => a.LastName == authorName || a.FirstName == authorName);
+            if (author == null)
+            {
+                author = new Author
+                {
+                    LastName = authorName
+                };
+                LibraryModelContext.Authors.Add(author);
+                LibraryModelContext.SaveChanges();
+            }
+            var book = new Book
+            {
+                Title = title,
+                PublicationYear = publicationYear,
+                Country = country,
+                City = city
+            };
+            LibraryModelContext.Books.Add(book);
+            LibraryModelContext.SaveChanges();
+            var authorBook = new AuthorBook
+            {
+                AuthorId = author.Id,
+                BookId = book.Id
+            };
+            LibraryModelContext.AuthorBooks.Add(authorBook);
+            var result = LibraryModelContext.SaveChanges();
+            return result;
+        }
+
+
+        private int SaveNewAuthorAction(string firstName, string lastName, string aliasName, DateTime dateOfBirth)
+        {
+            var author = new Author
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                AliasName = aliasName,
+                DateOfBirth = dateOfBirth
+            };
+            LibraryModelContext.Authors.Add(author);
+            var result = LibraryModelContext.SaveChanges();
+            return result;
+        }
+
+        private int SaveNewUserAction(string firstName, string lastName, string login, string password)
+        {
+            var readerRole = LibraryModelContext.UserRoles.FirstOrDefault(r => r.Role == "Reader");
+            var user = new User
+            {
+                FirstName = firstName,
+                LastName = lastName,
+                Login = login,
+                Password = password,
+                UserRoleId = readerRole.Id
+            };
+            LibraryModelContext.Users.Add(user);
+            LibraryModelContext.SaveChanges();
+            return LibraryModelContext.SaveChanges();
+        }
+
+        
+        private int UpdateBookFunc(Book book, string newTitle, int newPublicationYear, string newCountry, string newCity)
+        {
+            book.Title = newTitle;
+            book.PublicationYear = newPublicationYear;
+            book.Country = newCountry;
+            book.City = newCity;
+            return LibraryModelContext.SaveChanges();
+        }
+
+
+        private int UpdateAuthorAction(Author author, string newFirstName, string newLastName, string newAliasName, DateTime newDateOfBirth)
+        {
+            author.FirstName = newFirstName;
+            author.LastName = newLastName;
+            author.AliasName = newAliasName;
+            author.DateOfBirth = newDateOfBirth;
+            return LibraryModelContext.SaveChanges();
+        }
+
+        private Author? FindAuthorByNamePartAction(string name)
+        {
+            return LibraryModelContext.Authors.FirstOrDefault(a => a.LastName.Contains(name) || a.FirstName.Contains(name));
+        }
+
+        private int UpdateUserAction(User user, string newFirstName, string newLastName, string newLogin, string newPassword)
+        {
+            var readerRole = LibraryModelContext.UserRoles.FirstOrDefault(r => r.Role == "Reader");
+            user.FirstName = newFirstName;
+            user.LastName = newLastName;
+            user.Login = newLogin;
+            user.Password = newPassword;
+            user.UserRoleId = readerRole.Id;
+            return LibraryModelContext.SaveChanges();
+        }
+
+        private User? FindUserByLoginNameAction(string login)
+        {
+            return LibraryModelContext.Users.FirstOrDefault(u => u.Login.Contains(login));
+        }
+
+        private int DeleteBookAction(Book book)
+        {
+            LibraryModelContext.Books.Remove(book);
+            return LibraryModelContext.SaveChanges();
+        }
+
+        private int DeleteAuthorAction(Author author)
+        {
+            LibraryModelContext.Authors.Remove(author);
+            return LibraryModelContext.SaveChanges();
+        }
+
+        private int DeleteUserAction(User? user)
+        {
+            LibraryModelContext.Users.Remove(user);
+            return LibraryModelContext.SaveChanges();
         }
     }
 }
